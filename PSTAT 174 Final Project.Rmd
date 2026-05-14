@@ -1,0 +1,318 @@
+---
+title: "Temporal Patterns in Popular Spotify Songs from 2015-2025"
+subtitle: "PSTAT 174 Final Project"
+author: |
+  Julianna Nguyen  
+  <juliannanguyen@ucsb.edu>
+date: "2026-02-23"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(tseries)
+library(forecast)
+library(lmtest)
+library(astsa)
+```
+
+# Abstract
+
+Music streaming behavior evolves rapidly over time, which reflects both consumer preferences and broader cultural trends. Platforms like Spotify generate large columns of time-dependent data that provide valuable insight into how music consumption changes throughout the year. This project analyzes Spotify listening data from 2015 to 2025, focusing on how the number of popular songs released changes over time. The dataset contains over 85,000 tracks and includes information such as release dates and popularity metrics.
+
+The goal of the project is to identify whether the frequency of song releases exhibits trend, seasonal, or cyclical patterns over time. To achieve this, a monthly time series is constructed by aggregating song counts, and the Box-Jenkins approach is applied to estimate a Seasonal Autoregressive Integrated Moving Average (SARIMA) model. In addition, spectral analysis is applied to examine the frequency structure of the time series and identify dominant cycles in streaming behavior.
+
+The results indicate that the monthly series is stationary, fluctuating around a relatively constant mean of approximately 644 songs per month with no significant upward or downward trend. Seasonal patterns appear to be weak, and spectral analysis confirms no dominant periodic cycles. The selected model, an $ARIMA(0,0,0)(2,0,0)_{12}$ captures mild seasonal autoregressive structure and produces stable forecasts for 2026. Overall, this project demonstrates how classical time series methods can be applied to large-scale streaming data to better understand temporal patterns in music production.
+
+\newpage
+
+# Introduction
+
+![](Spotify.png){width="374"}
+
+Over the past decade, music streaming has become one of the dominant forms of media consumption worldwide. Streaming services like Spotify, Apple Music, YouTube Music allow users to access millions of songs instantly, making streaming the dominant form of music consumption worldwide. As the platforms have grown, they have generated large-scale digital data that captures listening behavior over time. This data also provides valuable insight into how music popularity changes and how listener engagement evolves throughout the year (Zhang et al., 2013).
+
+In particular, Spotify produces vast amounts of time-dependent information that describes song performance. Metrics such as total streams and popularity scores offer useful indicators of how audiences interact with music. Because these variables are recorded over time, they form time series data that can be analyzed using statistical modeling techniques. Prior research highlights that streaming platforms rely heavily on data-driven systems to understand and influence listening behavior (Pedersen, 2020). Studying such data can help reveal patterns in listening behavior, including seasonal trends, shifts in popularity, and other recurring cycles in music consumption.
+
+The dataset used in this project contains Spotify listening information for more than 85,000 tracks from 2015 to 2025, including release dates and performance-related metrics. It is important to note that this dataset is synthetically generated and sourced from Kaggle (Kumar 2025), meaning no prior academic studies have analyzed this specific dataset. The related work cited in the project draws on studies that have examined real-world Spotify data, rather than this particular dataset, in order to motivate the analytical approach. Previous studies have demonstrated that Spotify data can be used to uncover trends in listener behavior and music popularity, further motivating this analysis (Terroso-Saenz et al. 2023). Because the original dataset is organized at the song level rather than by time period, a monthly time series is constructed by aggregating the number of songs released each month. This transformation allows the data to be analyzed using time series techniques.
+
+The primary objective of this project is to determine whether the number of popular song releases exhibits long-term trends, seasonal behavior, or cyclical patterns. The key finding of this analysis is that the monthly series is stationary, with no significant trend and weak seasonality, suggesting that the rate of popular song releases has remained remarkably stable over the past decade. Identifying these patterns provides insight into how music production has evolved as streaming platforms have become the most widespread medium for music consumption.
+
+To analyze the temporal behavior of the series, the Box-Jenkins methodology is applied to estimate a Seasonal Autoregressive Integrated Moving Average (SARIMA) model. This framework allows both short term dependence and potential seasonal effects to be captured within the same model. Spectral analysis is also applied to examine the frequency-domain properties of the time series and identify any dominant cycles present in the data. Together, these approaches provide a comprehensive analysis of how music release activity evolves over time.
+
+\newpage
+
+# Data
+
+```{r, message = FALSE}
+spotify <- read_csv("~/Documents/PSTAT 174/Final Project/Spotify.csv")
+
+# Clean the data
+spotify_clean <- spotify %>%
+  dplyr::select(
+    track_name,
+    artist_name,
+    album_name,
+    release_date,
+    genre,
+    popularity,
+    stream_count,
+    country,
+    label
+  )
+
+# Convert release_date to Date format
+spotify_clean <- spotify_clean %>%
+  mutate(release_date = as.Date(release_date))
+
+# Remove rows with missing release dates
+spotify_clean <- spotify_clean %>%
+  filter(!is.na(release_date))
+
+write_csv(spotify_clean, "Spotify_cleaned.csv")
+```
+
+The dataset used in this project comes from Kaggle and was created by Rohit Kumar (Kumar, 2025). The data can be accessed at: <https://www.kaggle.com/datasets/rohiteng/spotify-music-analytics-dataset-20152025>. It consists of Spotify track data spanning from 2015 to 2025, containing approximately 85,000 tracks with detailed metadata and audio features. In total, the data set has 19 columns. Each observation includes information about track name, artist, album, genre, release date, and various audio characteristics including tempo, loudness, energy, danceability, and instrumentalness. Additionally, the dataset includes popularity scores ranging from 0 to 100, streaming counts, country, and label information, which makes it suitable for a wide range of data analysis and modeling tasks.
+
+The dataset is synthetically generated by Rohit Kumar using patterns observed in real-world Spotify listening behavior. The specific generation method is not publicly documented beyond the dataset description on Kaggle; however, variables such as popularity scores and audio features are calibrated to match distributions observed on the platform. Key variables used in this project include the release date (a date-format column spanning January 2015 to December 2025) and the song count derived by aggregating releases per month, which ranges from a minimum of 572 to a maximum of 722 songs in a given month. Because the data is synthetic rather than drawn directly from Spotify's internal systems, findings should be interpreted as illustrative of the methods rather than as definitive conclusions about real-world music release behavior.
+
+The dataset is not originally recorded at regular time intervals, as each observation represents an individual song with a release date. Therefore the data is not a time series in its raw form. To apply time series methods, the dataset is transformed by aggregating observations based on release dates. Specifically, songs are grouped by month, and the number of songs released in each month is calculated. This process converts the irregular cross-sectional data into regularly spaced monthly time series, where each observation represents the total number of songs released in a given month over the 2015-2025 period, yielding 132 observations in total.
+
+The motivation for choosing this dataset comes from the growing importance of streaming platforms in the music industry. As Spotify continues to dominate music consumption, understanding how music release activity evolves over time is increasingly relevant. The dataset's long time span, rich set of audio and performance features, and publicly available format make it particularly well-suited for time series analysis. By focusing on aggregated release behavior, this project examines broader trends in music production rather than individual song performance.
+
+The main purpose of studying this dataset is to determine whether the number of songs released over time exhibits identifiable patterns such as trends, seasonality, or cyclical behavior. By transforming the data into a monthly time series and applying methods such as SARIMA modeling and spectral analysis, this project aims to better understand temporal dynamics in music production during the streaming era.
+
+\newpage
+
+# Methodology
+
+This project applies time series techniques to analyze patterns in music release activity over time. Since the original dataset is cross-sectional, the first step involves transforming the data into a time series by aggregating songs based on their release dates and computing the number of songs released per month. The resulting series represents monthly release counts from 2015 to 2025 and serves as the primary variable for analysis.
+
+Two main methods are used in this project: a Seasonal Autoregressive Integrated Moving Average (SARIMA) model and spectral analysis. The SARIMA model is used to capture time-domain patterns such as trends and potential seasonality, while spectral analysis is used to examine cyclical behavior in the frequency domain.
+
+### [SARIMA Model]{.underline}
+
+The Box-Jenkins methodology is used to identify, estimate, and validate an appropriate SARIMA model for the monthly time series. This process consists of model identification, parameter estimation, and diagnostic checking.
+
+In the model identification stage, the time series is first examined visually through a time series plot to assess its behavior over time. Stationarity is then formally tested using the Augmented Dickey-Fuller (ADF) test, where a p-value below 0.05 leads to rejection of the unit root null hypothesis and indicates that the series is stationary. If the series exhibits non-stationarity, first-order differencing is applied (d=1). If evidence of repeating seasonal patterns at a 12-month lag is found, seasonal differencing (D=1) would also be considered.
+
+The Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) plots are used to identify appropriate orders for the autoregressive (AR) and moving average (MA) components. Significant spikes in PACF at low lags suggest an AR(p) component, while significant spikes in the ACF suggest an MA(q) component. Spikes at seasonal lags such as lag 12 in either plot would suggest the need for seasonal AR or MA terms.
+
+In the parameter estimation stage, candidate models are fitted using maximum likelihood estimation. Model selection is guided by the Akaike Information Criterion (AIC), where lower values indicate a better balance between model fit and complexity. The `auto.arima()` function in R is also used to systematically search over candidate models and select the one with the lowest AIC.
+
+In the diagnostic checking stage, residual plots, ACF of residuals, and the Ljung-Box test are used to assess whether the residuals behave like white noise. A p-value above 0.05 in the Ljung-Box test indicates no significant remaining autocorrelation, suggesting the model adequately captures the dependence structure in the data. The final selected model is then used to generate 12-month ahead forecasts with 80% and 95% prediction intervals.
+
+### [Spectral Analysis]{.underline}
+
+On top of SARIMA modeling, spectral analysis is applied to examine the frequency-domain characteristics of the time series. While SARIMA models describe relationships between observations across time, spectral analysis decomposes the time series into contributions from different frequency components, allowing periodic patterns to be identified directly.
+
+The primary tool used in spectral analysis is the periodogram, which estimates how much variation in the time series can be attributed to different frequencies. A dominant peak at a particular frequency indicates the presence of a strong periodic cycle at the corresponding period. For example, a peak at frequency $f=1/12 \approx 0.083$ cycles per month would indicate a 12-month seasonal cycle. The series mean is removed prior to analysis to prevent the zero-frequency component from dominating the periodogram.
+
+Both raw and smoothed spectral density estimates are examined. A smoothed version is also computed by applying a moving average smoother to reduce noise in the raw periodogram and highlight broader trends. A log-transformed spectrum is additionally examined to improve visibility of variation across low-frequency components. Together these three views of the spectrum provide a picture of any periodic behavior present in the series. \newpage
+
+# Results
+
+### Constructing Time Series
+
+```{r}
+# Aggregate
+spotify_monthly <- spotify_clean %>%
+  mutate(month = floor_date(release_date, "month")) %>%
+  group_by(month) %>%
+  summarise(song_count = n()) %>%
+  arrange(month)
+
+head(spotify_monthly)
+```
+
+The dataset was aggregated by month using the release dates, and the number of songs released in each month was computed. This produced a regularly spaced monthly time series representing song release activity from January 2015 to December 2025, yielding 132 monthly observations.
+
+### Convert to Time Series Object
+
+```{r}
+# Extract first year and month of data
+start_year  <- year(min(spotify_monthly$month))
+start_month <- month(min(spotify_monthly$month))
+
+# Convert the monthly aggregated stream totals into a time series object
+spotify_ts <- ts(
+  spotify_monthly$song_count,
+  frequency = 12,
+  start = c(start_year, start_month)
+)
+
+spotify_ts
+```
+
+### Figure 1: Time Series Plot
+
+```{r}
+#Time series plot
+plot(
+  spotify_ts,
+  main = "Monthly Number of Spotify Songs Released",
+  xlab = "Time",
+  ylab = "Song Count"
+)
+```
+
+Figure 1 shows the monthly number of Spotify songs released from 2015 to 2025. Overall, the series fluctuates around a relatively stable level, with song counts generally ranging between approximately 600 and 720 per month and a historical mean of about 644 songs per month.
+
+There is no strong upward or downward trend over time. Instead, the series appears to fluctuate around a constant mean with relatively stable variance, which is consistent with a stationary process. This suggests that the rate of song releases has remained relatively stable over the past decade.
+
+There are noticeable short-term fluctuations, with some months experiencing higher or lower release counts than others. However, these changes appear irregular rather than systematic. More importantly, there is no clear repeated seasonal pattern, such as consistent peaks every 12 months. This indicates that the seasonal effects are likely weak or absent. Overall, the time series plot suggests that the series is driven primarily by random variation rather than strong trend or seasonal components.
+
+### Stationarity Test
+
+```{r}
+adf_result <- adf.test(spotify_ts)
+adf_result
+```
+
+The Augmented Dickey-Fuller Test was conducted to formally assess whether the monthly time series of song counts is stationary. The test produced a test statistic of -4.7331 and a p-value of 0.01. Since the p-value is less than the 0.05 significance level, the null hypothesis of a unit root is rejected, providing statistical evidence that the time series is stationary. As a result, no regular differencing is required and the order d is set to 0. This is consistent with the visual observation from the time series plot, where the series appeared to fluctuate around a constant mean without a clear trend.
+
+### Figure 2 and 3: ACF and PACF
+
+```{r}
+# ACF and PACF
+par(mfrow = c(1, 2))
+
+acf(spotify_ts, 
+    main = "ACF of Monthly Spotify Song Count")
+
+pacf(spotify_ts, 
+     main = "PACF of Monthly Spotify Song Count")
+```
+
+The ACF and the PACF plots were examined to identify an appropriate SARIMA model. The ACF plot does not show a slow gradual decay but rather, most autocorrelations fall within the significance bounds, which indicates weak serial dependence and no strong long-range persistence in the series. A moving average component is therefore not strongly indicated.
+
+The PACF plot shows a small number of significant spikes at low lags, particularly around lag 1, followed by mostly insignificant values. This pattern is consistent with a low-order autoregressive process and suggests the presence of an AR(1) component.
+
+In addition, neither the ACF nor the PACF exhibits clear spikes at seasonal lags such as 12, indicating that seasonal effects are weak or absent in this series. Based on these observations, a simple model with limited non-seasonal structure is appropriate, and a seasonal component may not be necessary.
+
+It should be noted that while the PACF suggested a possible AR(1) component, the spike at lag 1 was relatively modest and close to the significance boundary. When candidate models were formally compared using AIC in the model estimation stage, the auto.arima() procedure identified a purely seasonal specification — ARIMA(0, 0, 0)(2, 0, 0)12 — as the better-fitting model, with no non-seasonal AR or MA terms. This outcome is consistent with the ACF and PACF results: the weak and borderline spike at lag 1 in the PACF did not translate into a meaningfully better fit once the seasonal autoregressive structure at lags 12 and 24 was accounted for.
+
+### Model Estimation
+
+```{r}
+par(mfrow = c(2,2))
+# SARIMA Candidate Model
+
+sarima_model <- Arima(
+  spotify_ts,
+  order = c(1, 0, 1),
+  seasonal = list(order = c(0, 0, 1), period = 12)
+)
+
+summary(sarima_model)
+
+# Automatically Selected Final Model
+auto_model <- auto.arima(
+  spotify_ts,
+  seasonal = TRUE
+)
+
+summary(auto_model)
+
+# Model Comparison
+AIC(sarima_model)
+AIC(auto_model)
+
+# Diagnostic Checking
+checkresiduals(sarima_model)
+checkresiduals(auto_model)
+```
+
+Two candidate models were fitted and compared. The first was a $SARIMA(1,0,1)(0,0,1)_{12}$ model with a non-zero mean, selected based on the ACF and PACF diagnostics. The estimated coefficients for the AR(1), MA(1) and seasonal MA(1) components are relatively small in magnitude, and their associated standard errors are large relative to the estimates, indicating that these parameters are not strongly statistically significant. The model produced an AIC of 1279.19 and failed the Ljung-Box test (p = 0.0005), indicating that residuals still contained significant autocorrelation and the model did not adequately capture the dependence structure in the data.
+
+The second model was selected automatically using the `auto.arima()` procedure, which identifies an $ARIMA(0,0,0)(2,0,0)_{12}$ model with a non-zero mean as the optimal specification based on AIC. This model includes two seasonal autoregressive terms (SAR(1) and SAR(2)) and no non-seasonal AR or MA components. The estimated seasonal AR coefficients are 0.2317 (s.e. = 0.0917) and 0.2146 (s.e. = 0.0949), each approximately 2.3 to 2.5 times their standard errors, suggesting they are marginally statistically significant. The model produced a lower AIC of 1269.99, indicating a better fit relative to the candidate model.
+
+Residual diagnostics for the selected model show improved performance. The Ljung-Box test produces a p-value of 0.24, indicating that the residuals behave like white noise with no significant remaining autocorrelation. The residual ACF shows no significant spikes, and the histogram of residuals appears approximately normally distributed. These results confirm that the $ARIMA(0,0,0)(2,0,0)_{12}$ model provides an adequate fit to the data.
+
+Based on both model selection criteria and diagnostic checks, the $ARIMA(0,0,0)(2,0,0)_{12}$ model is selected as the final model. This indicates that the time series exhibits weak overall dependence, with only mild seasonal autoregressive effects at lags 12 and 24 and no strong non-seasonal structure.
+
+### Forecasting
+
+```{r}
+# Forecast the next 12 months
+forecast_12 <- forecast(auto_model, h=12)
+plot(forecast_12, main = "Forecast of Monthly Song Releases",
+     xlab = "Time",
+     ylab = "Song Count")
+forecast_12
+```
+
+The selected $ARIMA(0,0,0)(2,0,0)_{12}$ model was used to generate point forecasts for each month of 2026. The predicted values range from approximately 620 to 661 songs per month, remaining close to the historical mean of 644. This stability is consistent with the earlier finding that the series is stationary with no long-term trend.
+
+The 80% prediction intervals span roughly 583 to 698 songs per month, and the 95% intervals are wider still, reflecting a moderate degree of uncertainty in individual monthly forecasts. While the point forecasts remain stable, these intervals indicate that individual months may still experience noticeable variability driven by random fluctuation.
+
+The forecasts do not display strong seasonal patterns. Although the model includes seasonal autoregressive terms, these contribute only minor adjustments and do not produce pronounced cyclical behavior in the forecasts. Overall, Spotify song release activity is expected to remain stable in the near future, with fluctuations driven primarily by random variation rather than systematic trend or seasonal effects.
+
+## Alternative Model: Spectral Analysis Model
+
+```{r}
+# Remove mean to center the series
+spotify_centered <- spotify_ts - mean(spotify_ts)
+
+par(mfrow = c(2,2))
+
+# Raw periodogram
+spec.pgram(
+  spotify_centered,
+  log = "no",
+  main = "Raw Spectrum of Monthly Song Counts"
+)
+
+# Log spectrum
+spec.pgram(
+  spotify_centered,
+  log = "yes",
+  main = "Log Spectrum of Monthly Song Counts"
+)
+
+# Smoothed spectrum
+spec.pgram(
+  spotify_centered,
+  spans = c(5, 5),
+  log = "yes",
+  main = "Smoothed Spectrum of Monthly Song Counts"
+)
+```
+
+Spectral analysis was conducted to examine the frequency-domain structure of the monthly Spotify song count series, providing a complementary perspective to the SARIMA modeling results.
+
+The raw periodogram shows how variance is distributed across different frequencies. Of particular interest is the frequency $f = 1/12 \approx 0.083$ cycles per month, which would correspond to 12-month seasonal cycle. No prominent peak appears at this frequency, supporting the conclusion that seasonal effects are weak. The most visually notable feature of the raw periodogram is a large spike at approximately f = 5 cycles per month. However, this does not correspond to a meaningful seasonal cycle, and as an isolated spike in the raw estimate it most likely reflects noise rather than a true periodic pattern. This interpretation is supported by the smoothed spectrum, which does not confirm any peak at this frequency. Overall there is no clear dominant frequency emerging in the raw periodogram, further supporting the fact that the series does not exhibit strong periodic behavior.
+
+The log-transformed spectrum improves visibility of variation across lower-frequency components. Even after transformation, the spectrum remains relatively flat with no clear dominant frequency emerging, further supporting the conclusion that the series does not contain strong periodic components.
+
+The smoothed spectrum, produced by applying a moving average smoother to reduce noise, highlights broader trends in the frequency structure. The smoothed curve shows only mild fluctuations with no distinct peaks corresponding to a clear cycle. The absence of a strong spike at f = 1/12 confirms that seasonal effects are weak throughout the series.
+
+Overall, the spectral analysis is consistent with SARIMA modeling results. The variance in the series appears to be distributed broadly across frequencies rather than concentrated at any particular cycle, which is characteristic of a largely stationary and weakly dependent process.
+
+# Conclusion
+
+This project analyzed the temporal patterns of monthly Spotify song releases from 2015 to 2025 using time series methods. The central finding is that the monthly series is stationary, fluctuating around a stable mean of approximately 644 songs per month with no significant long-term trend and weak seasonality. This suggests that the rate of popular song releases on Spotify has remained remarkably consistent over the past decade, despite the rapid growth of the platform during this period.
+
+Exploratory analysis confirmed this finding visually and statistically. The time series plot showed no clear upward or downward trend, and the Augmented Dickey-Fuller test formally rejected the null hypothesis of a unit root (Dickey-Fuller = -4.7331, p = 0.01), confirming stationarity and indicating that no differencing was required. Examination of the ACF and PACF plots revealed only weak autocorrelation structure, with no strong evidence of persistent temporal dependence or pronounced seasonal effects at the 12-month lag.
+
+Several models were considered during the model selection process. A $SARIMA(1,0,1)(0,0,1)_{12}$ candidate model was evaluated but failed diagnostic checking, as the Ljung-Box test indicated significant remaining autocorrelation in the residuals (p = 0.0005). The `auto.arima()` procedure identified a simpler $ARIMA(0,0,0)(2,0,0)_{12}$ model as the optimal specification based on AIC (1269.99 vs. 1279.19). Residual diagnostics confirmed that this model adequately captured the dependence structure in the data, with white noise residuals (Ljung-Box p = 0.24) and an approximately normal residual distribution.
+
+Spectral analysis further supported these findings. No dominant peak was found at the frequency corresponding to a 12-month seasonal cycle ($f = 1/12 \approx0.083$ cycles per month), and the spectrum was broadly flat across all frequencies, reinforcing the conclusion that the series is driven primarily by random variation rather than periodic or seasonal forces.
+
+Forecasting results from the selected model indicate that monthly song release activity is expected to remain stable throughout 2026, with predicted values ranging from approximately 620 to 661 songs per month and 95% prediction intervals spanning roughly 564 to 717 songs per month. The stability of these forecasts is consistent with the stationary nature of the series.
+
+While this analysis provides useful insights, several extensions could improve understanding of Spotify song release patterns. Firstly, additional variables such as genre, artist popularity, or platform-specific trends could be incorporated using regression-based time series models such as ARMAX to better explain variability in monthly release counts. Second, GARCH models could be explored to capture potential changes in volatility over time that the current model does not account for. Third, analyzing a longer time span or higher-frequency data, such as weekly release counts, may reveal patterns that are not visible at the monthly level. Finally, incorporating external factors such as industry trends, global events, or shifts in streaming platform policies could provide a richer understanding of the drivers of music release activity over time.
+
+\newpage
+
+# References
+
+Kumar, R. (2025). *Spotify music analytics dataset 2015–2025*. Kaggle. <https://www.kaggle.com/datasets/rohiteng/spotify-music-analytics-dataset-20152025>
+
+Pedersen, R. R. (2020). Datafication and the push for ubiquitous listening in music streaming. *MedieKultur: Journal of Media and Communication Research, 36*(69), 071–089. <https://doi.org/10.7146/mediekultur.v36i69.121216>
+
+Terroso-Saenz, F., Soto, J., & Muñoz, A. (2023). Evolution of global music trends: An exploratory and predictive approach based on Spotify data. *Entertainment Computing, 44*, 100536. <https://doi.org/10.1016/j.entcom.2022.100536>
+
+Zhang, B., Kreitz, G., Isaksson, M., Ubillos, J., Urdaneta, G., Pouwelse, J. A., & Epema, D. (2013). Understanding user behavior in Spotify. *2013 Proceedings IEEE INFOCOM.* <https://doi.org/10.1109/infcom.2013.6566767>
